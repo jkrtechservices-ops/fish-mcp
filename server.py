@@ -42,6 +42,32 @@ async def list_my_voices(ctx: Context) -> str:
     return "\n".join(f"{i.get('title')} -> {i.get('_id')}" for i in items) or "Koi voice nahi mili"
 
 @mcp.tool()
+async def search_public_voices(ctx: Context, title: str = "", language: str = "", tag: str = "", page: int = 1) -> str:
+    """Fish Audio ki PUBLIC voice library me voices dhundo (naam -> reference_id). language jaise: hi, en. title aur tag optional filter hain."""
+    key = get_key(ctx)
+    params = {"page_size": 20, "page_number": page, "sort_by": "task_count"}
+    if title:
+        params["title"] = title
+    if language:
+        params["language"] = language
+    if tag:
+        params["tag"] = tag
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.get(
+            "https://api.fish.audio/model",
+            params=params,
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    if r.status_code != 200:
+        return f"Error {r.status_code}: {r.text[:200]}"
+    data = r.json()
+    items = data.get("items", [])
+    if not items:
+        return "Koi voice nahi mili"
+    lines = [f"{i.get('title')} [{','.join(i.get('languages') or [])}] -> {i.get('_id')}" for i in items]
+    return f"Total: {data.get('total')}\n" + "\n".join(lines)
+
+@mcp.tool()
 async def make_voiceover(segments: list[dict], ctx: Context) -> str:
     """Script ka voiceover banao. segments = [{"character": "...", "reference_id": "...", "text": "..."}].
     Har dialogue alag segment. reference_id hamesha user ki di hui list se lo, kabhi guess mat karo."""

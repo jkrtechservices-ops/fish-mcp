@@ -1,4 +1,4 @@
-import os, uuid, httpx, uvicorn
+import os, uuid, base64, httpx, uvicorn
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP, Context
 from starlette.responses import FileResponse, PlainTextResponse
@@ -6,6 +6,8 @@ from starlette.responses import FileResponse, PlainTextResponse
 PORT = int(os.environ.get("PORT", "8000"))
 MODEL = os.environ.get("FISH_MODEL", "s1")
 BASE = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:8000")
+GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+GH_REPO = os.environ.get("GITHUB_REPO", "")
 OUT = Path("audio")
 OUT.mkdir(exist_ok=True)
 
@@ -13,6 +15,16 @@ mcp = FastMCP("fish-voice", stateless_http=True, host="0.0.0.0")
 
 def get_key(ctx: Context) -> str:
     return ctx.request_context.request.headers.get("x-fish-key", "")
+
+async def push_github(client, name, data):
+    r = await client.put(
+        f"https://api.github.com/repos/{GH_REPO}/contents/audio/{name}",
+        headers={"Authorization": f"Bearer {GH_TOKEN}", "Accept": "application/vnd.github+json"},
+        json={"message": f"add {name}", "content": base64.b64encode(data).decode()},
+    )
+    if r.status_code in (200, 201):
+        return f"https://raw.githubusercontent.com/{GH_REPO}/main/audio/{name}"
+    return None
 
 async def tts(client, key, text, rid):
     r = await client.post(
@@ -24,6 +36,10 @@ async def tts(client, key, text, rid):
         return f"Error {r.status_code}: {r.text[:200]}"
     name = f"{uuid.uuid4().hex}.mp3"
     (OUT / name).write_bytes(r.content)
+    if GH_TOKEN and GH_REPO:
+        raw = await push_github(client, name, r.content)
+        if raw:
+            return raw
     return f"{BASE}/audio/{name}"
 
 @mcp.tool()
@@ -87,7 +103,7 @@ async def audio(request):
     p = OUT / Path(request.path_params["name"]).name
     if not p.exists():
         return PlainTextResponse("not found", status_code=404)
-        return FileResponse(p, media_type="audio/mpeg", filename=f"voiceover_{p.stem[:6]}.mp3")
+    return FileResponse(p, media_type="audio/mpeg", filename=f"voiceover_{p.stem[:6]}.mp3")
 
 class KeyFromPath:
     def __init__(self, app):

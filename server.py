@@ -6,8 +6,8 @@ from starlette.responses import FileResponse, PlainTextResponse
 PORT = int(os.environ.get("PORT", "8000"))
 MODEL = os.environ.get("FISH_MODEL", "s1")
 BASE = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:8000")
-GH_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-GH_REPO = os.environ.get("GITHUB_REPO", "")
+GH_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
+GH_REPO = os.environ.get("GITHUB_REPO", "").strip()
 OUT = Path("audio")
 OUT.mkdir(exist_ok=True)
 
@@ -17,6 +17,8 @@ def get_key(ctx: Context) -> str:
     return ctx.request_context.request.headers.get("x-fish-key", "")
 
 async def push_github(client, name, data):
+    if not GH_TOKEN or not GH_REPO:
+        return "ERR env vars GITHUB_TOKEN ya GITHUB_REPO set nahi hain"
     r = await client.put(
         f"https://api.github.com/repos/{GH_REPO}/contents/audio/{name}",
         headers={"Authorization": f"Bearer {GH_TOKEN}", "Accept": "application/vnd.github+json"},
@@ -24,7 +26,7 @@ async def push_github(client, name, data):
     )
     if r.status_code in (200, 201):
         return f"https://raw.githubusercontent.com/{GH_REPO}/main/audio/{name}"
-    return None
+    return "ERR " + str(r.status_code) + " " + r.text[:150]
 
 async def tts(client, key, text, rid):
     r = await client.post(
@@ -36,11 +38,10 @@ async def tts(client, key, text, rid):
         return f"Error {r.status_code}: {r.text[:200]}"
     name = f"{uuid.uuid4().hex}.mp3"
     (OUT / name).write_bytes(r.content)
-    if GH_TOKEN and GH_REPO:
-        raw = await push_github(client, name, r.content)
-        if raw:
-            return raw
-    return f"{BASE}/audio/{name}"
+    raw = await push_github(client, name, r.content)
+    if raw.startswith("ERR"):
+        return f"{BASE}/audio/{name} | GitHub {raw}"
+    return raw
 
 @mcp.tool()
 async def list_my_voices(ctx: Context) -> str:

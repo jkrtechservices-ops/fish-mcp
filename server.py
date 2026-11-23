@@ -9,7 +9,7 @@ BASE = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:8000")
 OUT = Path("audio")
 OUT.mkdir(exist_ok=True)
 
-mcp = FastMCP("fish-voice", stateless_http=True)
+mcp = FastMCP("fish-voice", stateless_http=True, host="0.0.0.0")
 
 def get_key(ctx: Context) -> str:
     return ctx.request_context.request.headers.get("x-fish-key", "")

@@ -87,7 +87,7 @@ async def audio(request):
     p = OUT / Path(request.path_params["name"]).name
     if not p.exists():
         return PlainTextResponse("not found", status_code=404)
-    return FileResponse(p, media_type="audio/mpeg")
+        return FileResponse(p, media_type="audio/mpeg", filename=f"voiceover_{p.stem[:6]}.mp3")
 
 class KeyFromPath:
     def __init__(self, app):
